@@ -9,8 +9,12 @@ Example:
 """
 
 import time
-from temporal.algorithms import is_leap, from_ordinal, from_unix_time, from_iso, to_ordinal, date_to_days, days_to_date
-from temporal.constants import DAY_NAMES, DAY_NAMES_LONG, MONTH_NAMES, MONTH_NAMES_LONG, DAYS_IN_MONTH
+from temporal.algorithms import (is_leap, from_ordinal, from_unix_time,
+                                 from_iso, to_ordinal, date_to_days,
+                                 days_to_date, week_no_from_date,
+                                 day_of_week_from_date)
+from temporal.constants import (DAY_NAMES, DAY_NAMES_LONG, MONTH_NAMES,
+                                MONTH_NAMES_LONG, DAYS_IN_MONTH)
 from temporal.parsers import strftime
 
 
@@ -20,7 +24,7 @@ class Date:
 
     def __init__(self, year: int, month: int, day: int) -> None:
         for key, value in locals().items():
-            if key in ('year', 'month', 'day') and not isinstance(value, int):
+            if key in self.__slots__ and not isinstance(value, int):
                 raise TypeError(f'Expected {key} to be an int', f'{value!r}')
         if not 1 <= month <= 12:
             raise ValueError(f'month must be between 1 and 12')
@@ -113,7 +117,7 @@ class Date:
         "Construct a date from a POSIX timestamp."
         days = int(seconds // 86400)
         year, month, day, *_ = from_unix_time(days)
-        return Date(year, month, day)
+        return cls(year, month, day)
     
     @classmethod
     def today(cls) -> 'Date':
@@ -140,13 +144,13 @@ class Date:
         days = (week - 1) * 7 + day
         days += date_to_days(year,1,1)
         year, month, day = days_to_date(days)
-        return Date(year, month, day)
+        return cls(year, month, day)
 
     @classmethod
     def from_iso_date(cls, days: int) -> 'Date':
         "Construct a date from days from ISO. 0000-01-01 is day 0."
         year, month, day = from_iso(days)
-        return Date(year, month, day)
+        return cls(year, month, day)
 
     # Format methods
     def as_iso_format(self) -> str:
@@ -160,10 +164,10 @@ class Date:
         return to_ordinal(*self)
 
     def as_ctime(self) -> str:
-         "Return ctime style string."
-         weekday = DAY_NAMES[self.iso_weekday() - 1]
-         month = MONTH_NAMES[self.month - 1]
-         return f'{weekday} {month} {self.day:02} 00:00:00 {self.year:04}'
+        "Return ctime style string."
+        weekday = DAY_NAMES[self.iso_weekday() - 1]
+        month = MONTH_NAMES[self.month - 1]
+        return f'{weekday} {month} {self.day:02} 00:00:00 {self.year:04}'
 
     def as_strftime(self, text: str) -> str:
         return strftime(self, text)
@@ -174,7 +178,8 @@ class Date:
 
     def as_iso_calendar(self):
         # original datetime returns a instance of IsoCalendarDate
-        return (self.year, self.week(), self.iso_weekday())
+        # return (self.year, self.week(), self.iso_weekday())
+        return week_no_from_date(*self)
 
     # Calculation methods
     def weekday(self) -> int:
@@ -186,13 +191,65 @@ class Date:
         return self.as_ordinal() % 7 or 7
 
     def day_of_year(self) -> int:
-        return date_to_days(*self) - date_to_days(self.year, 1, 1)
+        return date_to_days(*self) - date_to_days(self.year, 1, 1) + 1
 
     def week(self) -> int:
-        return self.day_of_year() // 7 + 1
+        _, week, _ = week_no_from_date(*self)
+        return week
+        # return self.day_of_year() // 7 + 1
 
 
+class Time:
+    __slots__ = ('hour', 'minute', 'second', 'microsecond', 'fold')
+    __match_args__ = ('hour', 'minute', 'second', 'microsecond', 'fold')
 
+    def __init__(self, hour: int, minute: int, second: int, microsecond: int, fold: int) -> None:
+        for key, value in locals().items():
+            if key in self.__slots__ and not isinstance(value, int):
+                raise TypeError(f'Expected {key} to be an int', f'{value!r}')
+        if not 0 <= hour <= 23:
+            raise ValueError(f'hour must be between 0 and 23')
+        if not 0 <= minute <= 59:
+            raise ValueError(f'minute must be between 0 and 59')
+        if not 0 <= second <= 59:
+            raise ValueError(f'second must be between 0 and 59')
+        if not 0 <= microsecond <= 999999:
+            raise ValueError(f'microsecond must be between 0 and 999999')
+        if not 0 <= fold <= 1:
+            raise ValueError(f'fold must be between 0 and 1')
+        object.__setattr__(self, 'hour', hour)
+        object.__setattr__(self, 'minute', minute)
+        object.__setattr__(self, 'second', second)
+        object.__setattr__(self, 'microsecond', microsecond)
+        object.__setattr__(self, 'fold', fold)
+
+    def __repr__(self):
+        cls = type(self).__name__
+        return (f'{cls}(hour={self.hour!r}, minute={self.minute!r}, '
+                f'second={self.second!r}, microsecond={self.microsecond!r}, '
+                f'fold={self.fold!r})')
+
+    def __eq__(self, other):
+        if not isinstance(other, Time):
+            return NotImplemented
+        return (self.hour, self.minute, self.second, self.microsecond, self.fold) == (other.hour, other.minute, other.second, other.microsecond, other.fold)
+
+    def __hash__(self):
+        return hash((self.hour, self.minute, self.second, self.microsecond, self.fold))
+
+    def __setattr__(self, name, value):
+        raise AttributeError(f"Can't set attribute {name!r}")
+
+    def __delattr__(self, name):
+        raise AttributeError(f"Can't delete attribute {name!r}")
+
+    def __getstate__(self):
+        return (self.hour, self.minute, self.second, self.microsecond, self.fold)
+
+    def __setstate__(self, state):
+        fields = ('hour', 'minute', 'second', 'microsecond', 'fold')
+        for field, value in zip(fields, state):
+            object.__setattr__(self, field, value)
 
 # from dataclasses import dataclass
 

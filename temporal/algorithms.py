@@ -11,8 +11,6 @@ Example:
 
 """
 
-from typing import Tuple
-
 
 def is_leap(year: int) -> bool:
     """Determines if the given year is a leap year.
@@ -52,7 +50,7 @@ def days_to_date(days: int):
         raise ValueError('Supplied days is not an integer')
 
     year = (10000 * days + 14780) // 3652425
-    ddd = days - (365 * year + year // 4 - year // 100 + year // 400)
+    ddd = days - (365 * year + year // 4 - year // 100 + year // 400) # DDD=DOY
     if (ddd < 0):
         year = year - 1
         ddd = days - (365 * year + year // 4 - year // 100 + year // 400)
@@ -231,3 +229,40 @@ def to_iso(year: int, month: int, day: int):
     days = date_to_days(year, month, day)
     days += 60
     return days
+
+
+def day_of_week_from_date(y, m, d):
+    "Return day of the week, where Monday == 0 ... Sunday == 6."
+    t = (0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4)
+    if m < 3:
+        y -= 1
+    return (y + y//4 - y//100 + y//400 + t[m-1] + d) % 7
+
+def week_no_from_date(y,m,d):
+    "Returns year, week no and day of week for supplied date"
+    dow = day_of_week_from_date(y,m,d)
+    if dow == 0:
+        dow = 7
+    thursday = d + 4 - dow
+    if m == 12 and thursday > 31:
+        return (y+1, 1, dow)
+    if m == 1 and thursday < 1:
+        y -= 1
+        m = 12
+        thursday += 31
+    doy = 275*m//9 + thursday - 31
+    if m > 2:
+        doy += is_leap(y) - 2
+    return (y, 1 + doy//7, dow)
+
+
+def iso_week_to_date(y, w, wd): # might be off by one (2023,1,1) becomes 2023, 1, 2
+    days_of_year = 365 if not is_leap(y) else 366
+    dow = day_of_week_from_date(y,1,4)
+    d = w * 7 + wd - (dow + 3)
+    if d < 1:
+        d += (days_of_year - 1)
+    elif d > days_of_year:
+        d -= days_of_year
+    d += date_to_days(y,1,1) - 1
+    return days_to_date(d)
